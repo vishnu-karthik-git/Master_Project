@@ -23,7 +23,6 @@ def get_emission_for_the_period(df: pd.DataFrame):
         energy = df.loc[time : (time+np.timedelta64(59, 'm'))]
         energy_consumed = energy['Grid_Charging_Load_kW'].sum()/60
         new_df.loc[i, 'Energy_consumed_kWh'] = energy_consumed
-        print(time in emission_profile.index)
         emission_df = emission_profile.loc[time]
         emission = (emission_df['Carbon intensity g/kWh (direct)'].sum() * energy_consumed) / 1000
         new_df.loc[i, 'Emission'] = emission
