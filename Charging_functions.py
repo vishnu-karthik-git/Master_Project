@@ -4,7 +4,9 @@ import numpy as np
 
 # EV parameters
 EV_battery = 58  # kWh
-max_SOC = 0.9  # kWh
+max_SOC = 0.95  # SOC percentage
+
+np.random.seed(42)   # set the seed
 
 def print_fig(df: pd.DataFrame):
     # Plot the load profile
@@ -31,6 +33,7 @@ def charge_ev(df: pd.DataFrame, index_1: int, index_2: int, current_SOC):
 
 def discharge_ev(current_SOC, discharge_energy, battery_capacity):
     available_energy = current_SOC * battery_capacity
+    discharge_energy = discharge_energy * (1 + np.random.uniform(-0.10, 0.10))
     energy_to_discharge = min(discharge_energy, available_energy)
     new_SOC = (current_SOC * battery_capacity - energy_to_discharge) / battery_capacity
 
