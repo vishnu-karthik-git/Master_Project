@@ -20,10 +20,14 @@ def print_fig(df: pd.DataFrame):
     plt.grid()
     plt.show()
 
+def get_load_profile_for_period(df: pd.DataFrame, start_date: str, end_date: str) -> pd.DataFrame:
+    mask = (df['Timestamp'] >= start_date) & (df['Timestamp'] < end_date)
+    return df.loc[mask]
+
 # Function to calculate EV charging
 def charge_ev(df: pd.DataFrame, index_1: int, index_2: int, current_SOC):
     df = df.iloc[index_1:index_2]
-    extra_power_generated = df[df['total'] < 1.4] # Assuming 1.4 kW is the threshold for ev charging
+    extra_power_generated = df[df['total'] < -1.4] # Assuming 1.4 kW is the threshold for ev charging
     total_extra_energy = abs(extra_power_generated['total'].sum() / 60)  # kWh for one minute intervals
     energy_needed_to_full_charge = (max_SOC * EV_battery) - (current_SOC * EV_battery)
     energy_to_charge = min(total_extra_energy, energy_needed_to_full_charge)

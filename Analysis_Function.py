@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from Charging_Functions import charge_ev, discharge_ev, charge_ev_grid, print_fig, get_load_profile_for_grid_charging
+from Charging_Functions import charge_ev, discharge_ev, charge_ev_grid, get_load_profile_for_grid_charging, get_load_profile_for_period
 from Emission_Functions import get_emission_for_the_period
 from Cost_Functions import calculate_grid_tariff
 
@@ -36,10 +36,6 @@ index_2=5*24*60
 index_3=6*24*60
 index_4=7*24*60
 index_5=index_3 + 20*60 # for choosing 8 pm of sunday as the Grid Charging Time 
-
-def get_load_profile_for_period(df: pd.DataFrame, start_date: str, end_date: str) -> pd.DataFrame:
-    mask = (df['Timestamp'] >= start_date) & (df['Timestamp'] < end_date)
-    return df.loc[mask]
 
 def weekly_charge_discharge_pattern_solar_charging(df: pd.DataFrame):
     global grid_consumption_solar_charging
