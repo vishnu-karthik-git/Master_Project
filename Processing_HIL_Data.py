@@ -1,9 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt 
 
-test_name = "dynamic_test"
-path = "test_data/"+test_name+"/DUT-'Amperfied_5.1.1'.csv"
-df = pd.read_csv(path)
+test_name = ["dynamic_test", "varph1", "varph3_1", "varph3_2", "Grid"]
 cap_rate = 10
 
 Energy_Grid = 0.0
@@ -16,7 +14,7 @@ def preprocess_data(df: pd.DataFrame)->pd.DataFrame:
     df['Power_Grid'] = df['Janitza UMG508.Pna'] + df['Janitza UMG508.Pnb'] + df['Janitza UMG508.Pnc']
     return df
 
-def visualize_df(df: pd.DataFrame):
+def visualize_df(df: pd.DataFrame,test: str):
     plt.figure(figsize=(10, 6))
     plt.plot(df['Time'], df['Power_Surplus'], label='Suplus', color='Darkorange') 
     plt.plot(df['Time'], df['Power_EV'], label='Wallbox', color='steelblue')
@@ -26,7 +24,7 @@ def visualize_df(df: pd.DataFrame):
     #plt.ylim(0, -10)  # Adjust y-axis limits as needed
     plt.legend()
     plt.grid()
-    plt.show()
+    plt.savefig('outputs/'+test+'.png')
 
 def energy_calculation(df: pd.DataFrame):
     global Energy_Solar, Energy_Ev, Energy_Grid
@@ -35,9 +33,21 @@ def energy_calculation(df: pd.DataFrame):
         Energy_Ev += (df['Power_EV'].iloc[int(i)]/3600)
         Energy_Grid += (df['Power_Grid'].iloc[int(i)]/3600)
 
-modified_df = preprocess_data(df)
-#visualize_df(modified_df)
-energy_calculation(modified_df)
-print(f"Energy produced from Solar {round(Energy_Solar/1000,2)} kWh")
-print(f"Energy charged to Ev {round(Energy_Ev/1000,2)} kWh")
-print(f"Energy consumed from Grid {round(Energy_Grid/1000,2)} kWh")
+def reset_energy_values():
+    global Energy_Solar, Energy_Ev, Energy_Grid
+    Energy_Ev = 0.0
+    Energy_Grid = 0.0
+    Energy_Solar = 0.0
+
+for test in test_name:
+    path = "test_data/"+test+"/DUT-'Amperfied_5.1.1'.csv"
+    df = pd.read_csv(path)
+    modified_df = preprocess_data(df)
+    #visualize_df(modified_df,test)
+    modified_df = modified_df[modified_df['Power_Surplus'] > 1400] if modified_df['Power_Surplus'].sum() > 10000 else modified_df
+    energy_calculation(modified_df)
+    print(" From test - "+ test)
+    print(f"Energy produced from Solar {round(Energy_Solar/1000,2)} kWh")
+    print(f"Energy charged to Ev {round(Energy_Ev/1000,2)} kWh")
+    print(f"Energy consumed from Grid {round(Energy_Grid/1000,2)} kWh")
+    reset_energy_values()
