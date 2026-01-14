@@ -1,7 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt 
 
-test_name = ["dynamic_test", "varph1", "varph3_1", "varph3_2", "Grid"]
+test_name = ["dynamic_test","varph1", "varph3_1", "varph3_2", "Grid"]
 cap_rate = 10
 
 Energy_Grid = 0.0
@@ -13,6 +13,21 @@ def preprocess_data(df: pd.DataFrame)->pd.DataFrame:
     df['Power_EV'] = df['CINERGIA EV.Pu'] + df['CINERGIA EV.Pv'] + df['CINERGIA EV.Pw'] 
     df['Power_Grid'] = df['Janitza UMG508.Pna'] + df['Janitza UMG508.Pnb'] + df['Janitza UMG508.Pnc']
     return df
+
+def pie_chart(Energy_Solar: float, Energy_Ev: float, Energy_Grid: float, test: str, Supply:str ='Solar and Grid'):
+    Energy_Supplied = Energy_Solar + Energy_Grid
+    Energy_Charged = Energy_Ev
+    Energy_Wasted = Energy_Supplied - Energy_Charged
+    labels = ['Energy Charged to EV', 'Energy Wasted']
+    sizes = [Energy_Charged, Energy_Wasted]
+    colors = ['lightBlue', 'grey']
+    #explode = (0.1, 0, 0)  # explode the 1st slice
+
+    plt.figure(figsize=(8, 8))
+    plt.pie(sizes, labels=labels, colors=colors,
+            autopct='%1.1f%%', shadow=True, startangle=140)
+    plt.title('Total Energy Supplied ' + Supply)
+    plt.savefig('outputs/pie_chart_' + test + '.png')
 
 def visualize_df(df: pd.DataFrame,test: str):
     plt.figure(figsize=(10, 6))
@@ -50,4 +65,8 @@ for test in test_name:
     print(f"Energy produced from Solar {round(Energy_Solar/1000,2)} kWh")
     print(f"Energy charged to Ev {round(Energy_Ev/1000,2)} kWh")
     print(f"Energy consumed from Grid {round(Energy_Grid/1000,2)} kWh")
+    if test != "Grid":
+        pie_chart(Energy_Solar, Energy_Ev, Energy_Grid, test)  
+    else:    
+        pie_chart(Energy_Solar, Energy_Ev, Energy_Grid, test,'Grid Only')
     reset_energy_values()
