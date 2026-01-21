@@ -1,23 +1,25 @@
 import pandas as pd
 import numpy as np
-from Charging_Functions import charge_ev, discharge_ev, charge_ev_grid, get_load_profile_for_grid_charging, get_load_profile_for_period, print_fig
-from Emission_Functions import get_emission_for_the_period
+from Charging_Functions import charge_ev, discharge_ev, charge_ev_grid, get_load_profile_for_grid_charging, get_load_profile_for_period, get_load_profile_for_grid_solar_charging, print_fig
+from Emission_Functions import get_emission_for_the_period, calculate_emission_with_partial_hour
 from Cost_Functions import calculate_grid_tariff, caculate_feedin_tariff
 
-load_profile = pd.read_csv('inputs/neighbourhood_10kWp.csv', sep=';')
+load_profile = pd.read_csv('inputs/neighbourhood_8kWp.csv', sep=';')
 grid_consumption_solar_charging = pd.DataFrame()
 grid_consumption_grid_charging = pd.DataFrame()
+
 del load_profile['unixtimestamp'] 
 del load_profile['unixtimestamp.1']
 
 #create a datetime column which has every minute of year 2024
 load_profile['Timestamp'] = pd.date_range(start='2024-01-01', end='2024-12-31 23:59', freq='min')
-#print_fig(load_profile, 'House Load')
+print_fig(load_profile, 'House Load')
 
 #Create a df for EV load profile
 ev_load_profile = pd.DataFrame()
 ev_load_profile['Week_Number'] = list(range(1, 53))
 ev_load_profile_grid = ev_load_profile.copy()
+ev_load_profile_grid_solar = ev_load_profile.copy()
 
 # EV parameters
 EV_battery = 58  # kWh
@@ -37,7 +39,8 @@ i_thu_start = 3*24*60 # index to start thu of the week
 i_fri_end = 5*24*60
 i_sun_start = 6*24*60
 i_sun_end = 7*24*60
-i_sun_grid = i_sun_start + 20*60 # for choosing 8 pm of sunday as the Grid Charging Time 
+i_sun_pv = i_sun_start + 20*60
+i_sun_grid = i_sun_start + 14*60 # for choosing 8 pm of sunday as the Grid Charging Time 
 
 def weekly_charge_discharge_pattern_solar_charging(df: pd.DataFrame, winter: bool = False):
     global grid_consumption_solar_charging
@@ -66,24 +69,30 @@ def weekly_charge_discharge_pattern_solar_charging(df: pd.DataFrame, winter: boo
     # Charge on Sunday from Solar
     SOC_after_Sun, EV_charging_energy = charge_ev(df, i_sun_start, i_sun_end, SOC_after_sat)
     EV_charging_energy_sun_pv = EV_charging_energy
-    EV_charging_energy_sun_grid = 0.0
+    EV_charging_from_grid = 0.0
     emission_for_the_week = 0.0
-     # If not fully charged, charge from grid as well
-    if SOC_after_Sun < (0.95*max_SOC):
-        SOC_after_Sun, EV_charging_energy_sun_grid = charge_ev_grid(SOC_after_Sun)
-        grid_consumption_week = get_load_profile_for_grid_charging(EV_charging_energy_sun_grid, str(df['Timestamp'].iloc[i_sun_grid]))
-        emission_for_the_week = get_emission_for_the_period(grid_consumption_week)
-        print(f'Grid Consumption Emissions for the week: {round(emission_for_the_week, 3)} kgCO2')
-        grid_consumption_solar_charging = pd.concat([grid_consumption_solar_charging, grid_consumption_week], ignore_index=True)
-    EV_charging_energy_sun = EV_charging_energy_sun_pv + EV_charging_energy_sun_grid 
-    print(f'EV Charging Energy on Sunday (Solar Charging Strategy): {round(EV_charging_energy_sun, 3)} kWh')
-    print(f' - from PV: {round(EV_charging_energy_sun_pv, 3)} kWh')
-    print(f' - from Grid: {round(EV_charging_energy_sun_grid, 3)} kWh')
+    # If not fully charged, charge from grid as well
+    if SOC_after_Sun < (0.90*max_SOC):
+    #     SOC_after_Sun, EV_charging_energy_sun_grid = charge_ev_grid(SOC_after_Sun)
+    #     grid_consumption_week = get_load_profile_for_grid_charging(EV_charging_energy_sun_grid, str(df['Timestamp'].iloc[i_sun_pv]))
+    #     emission_for_the_week = get_emission_for_the_period(grid_consumption_week)
+    #     print(f'Grid Consumption Emissions for the week: {round(emission_for_the_week, 3)} kgCO2')
+    #     grid_consumption_solar_charging = pd.concat([grid_consumption_solar_charging, grid_consumption_week], ignore_index=True)
+    # EV_charging_energy_sun = EV_charging_energy_sun_pv + EV_charging_energy_sun_grid 
+    # print(f'EV Charging Energy on Sunday (Solar Charging Strategy): {round(EV_charging_energy_sun, 3)} kWh')
+    # print(f' - from PV: {round(EV_charging_energy_sun_pv, 3)} kWh')
+    # print(f' - from Grid: {round(EV_charging_energy_sun_grid, 3)} kWh')
+        grid_consumption_week = get_load_profile_for_grid_solar_charging(((max_SOC-SOC_after_sat)*EV_battery),df,i_sun_start)
+        EV_charging_from_grid = round(grid_consumption_week['Grid_Charging_Load_kW'].sum(), 3) / 60
+        EV_charging_energy_sun_pv = round(abs(grid_consumption_week['total'].sum()),3) / 60
+        emission_for_the_week = calculate_emission_with_partial_hour(grid_consumption_week, grid_consumption_week['Timestamp'].iloc[0])
+        SOC_after_Sun = max_SOC
+
     ev_load_profile.loc[week_count - 1, 'EV sun total charge [kWh]'] = round((SOC_after_Sun-SOC_after_sat)*EV_battery, 3)
     ev_load_profile.loc[week_count - 1, 'EV sun charge from PV [kWh]'] = round(EV_charging_energy_sun_pv, 3)
-    ev_load_profile.loc[week_count - 1, 'EV sun charge from Grid [kWh]'] = round(EV_charging_energy_sun_grid, 3)
-    ev_load_profile.loc[week_count - 1, 'Grid Consumption for Charging [Euros]'] = calculate_grid_tariff(round(EV_charging_energy_sun_grid, 3))
-    ev_load_profile.loc[week_count - 1, 'Co2 Emssions for the week [KG]'] = round(emission_for_the_week, 3)
+    ev_load_profile.loc[week_count - 1, 'EV sun charge from Grid [kWh]'] = round(EV_charging_from_grid, 3)
+    ev_load_profile.loc[week_count - 1, 'Grid Consumption for Charging [Euros]'] = calculate_grid_tariff(round(EV_charging_from_grid, 3))
+    ev_load_profile.loc[week_count - 1, 'Co2 Emssions for the week [kg]'] = round(emission_for_the_week, 3)
 
     #Update SOC 
     SOC_start = SOC_after_Sun
@@ -101,7 +110,22 @@ def weekly_charge_discharge_pattern_grid_charging(df : pd.DataFrame):
     grid_consumption_grid_charging = pd.concat([grid_consumption_grid_charging, grid_consumption_week], ignore_index=True)
     ev_load_profile_grid.loc[week_count - 1, 'EV charge from Grid [kWh]'] = round(EV_charging_energy_grid, 3)
     ev_load_profile_grid.loc[week_count - 1, 'Grid Consumption for Charging [Euros]'] = calculate_grid_tariff(round(EV_charging_energy_grid, 3))
-    ev_load_profile_grid.loc[week_count - 1, 'Co2 Emssions for the week [KG]'] = round(emission_for_the_week, 3)
+    ev_load_profile_grid.loc[week_count - 1, 'Co2 Emssions for the week [kg]'] = round(emission_for_the_week, 3)
+
+def weekly_charge_discharge_pattern_grid_solar_charging(df : pd.DataFrame):
+
+    EV_charging_energy_grid_solar = float(ev_load_profile.loc[week_count - 1, 'EV Mon to Wed consumption [kWh]'] + ev_load_profile.loc[week_count - 1,'EV Sat consumption [kWh]'])
+    grid_consumption_week = get_load_profile_for_grid_solar_charging(EV_charging_energy_grid_solar,df,i_sun_start)
+    EV_charging_from_grid = round(grid_consumption_week['Grid_Charging_Load_kW'].sum(), 3) / 60
+    emission_for_the_week = calculate_emission_with_partial_hour(grid_consumption_week, grid_consumption_week['Timestamp'].iloc[0])
+    print('EV Charging from Grid and PV to reach max SOC on Sunday (Grid + PV Charging Strategy)')
+    print(f'EV Charging Energy on Sunday from Grid: {round(EV_charging_from_grid, 3)} kWh')
+    print(f'Grid Consumption Emissions for the week: {round(emission_for_the_week, 3)} kgCO2')
+    #grid_consumption_grid_charging = pd.concat([grid_consumption_grid_charging, grid_consumption_week], ignore_index=True)
+    ev_load_profile_grid_solar.loc[week_count - 1, 'EV charge from Grid [kWh]'] = round(EV_charging_from_grid, 3)
+    ev_load_profile_grid_solar.loc[week_count - 1, 'Grid Consumption for Charging [Euros]'] = calculate_grid_tariff(EV_charging_from_grid)
+    ev_load_profile_grid_solar.loc[week_count - 1, 'Co2 Emssions for the week [kg]'] = round(emission_for_the_week, 3)
+      
 
 def weekly_feedin_tariff_and_draw_tariff(df : pd.DataFrame):
 
@@ -141,7 +165,8 @@ for week in range(1, 53):
     else:    
         weekly_charge_discharge_pattern_solar_charging(df=load_profile_week)
     weekly_charge_discharge_pattern_grid_charging(df=load_profile_week)
-    weekly_feedin_tariff_and_draw_tariff(df=load_profile_week)
+    weekly_charge_discharge_pattern_grid_solar_charging(df=load_profile_week)
+    #weekly_feedin_tariff_and_draw_tariff(df=load_profile_week)
     #Update start_date and end_date for next week
     start_date = start_date + np.timedelta64(7, 'D')
     end_date = end_date + np.timedelta64(7, 'D')
@@ -150,13 +175,16 @@ for week in range(1, 53):
 # Save the EV load profiles to CSV files
 ev_load_profile.to_csv('outputs/EV_load_profile_solar_charging.csv', index=False)
 ev_load_profile_grid.to_csv('outputs/EV_load_profile_grid_charging.csv', index=False)
+ev_load_profile_grid_solar.to_csv('outputs/EV_load_profile_solar_grid_charging.csv',index=False)
 
 Total_Energy_Consumption_Year = load_profile['total'].sum() / 60  # kWh for one minute intervals
-print(f'Total Energy Consumption in the Year 2024 (PV + Grid): {round(Total_Energy_Consumption_Year, 2)} kWh')
+print(f'Total Energy Consumption in the Year 2024 for the House Without EV: {round(Total_Energy_Consumption_Year, 2)} kWh')
 
-print(f"Annual emission of CO2 in Kg for Solar Charging: {round(ev_load_profile['Co2 Emssions for the week [KG]'].sum(),3)} Kg")
-print(f"Annual emission of CO2 in Kg for Grid Charging: {round(ev_load_profile_grid['Co2 Emssions for the week [KG]'].sum(),3)} Kg")
+print(f"Annual emission of CO2 in Kg for Solar Charging: {round(ev_load_profile['Co2 Emssions for the week [kg]'].sum(),3)} kg")
+print(f"Annual emission of CO2 in Kg for Grid Charging: {round(ev_load_profile_grid['Co2 Emssions for the week [kg]'].sum(),3)} kg")
+print(f"Annual emission of CO2 in Kg for Solar + Grid Charging: {round(ev_load_profile_grid_solar['Co2 Emssions for the week [kg]'].sum(),3)} kg")
 print(f"Annual cost for energy charged from grid in Solar Charging: {round(ev_load_profile['Grid Consumption for Charging [Euros]'].sum(),2)} Euros")
 print(f"Annual cost for energy charged from grid in Grid Charging: {calculate_grid_tariff(ev_load_profile_grid['EV charge from Grid [kWh]'].sum())} Euros")
-print(f'Annual Feedin Profit {round(ev_load_profile["Weekly feedin Tariff [Euros]"].sum(),2)} Euros')
-print(f'Annual Draw Cost {round(ev_load_profile["Weekly draw Tariff [Euros]"].sum(),2)} Euros')
+print(f"Annual cost for energy charged from grid in Solar + Grid Charging: {calculate_grid_tariff(ev_load_profile_grid_solar['EV charge from Grid [kWh]'].sum())} Euros")
+#print(f'Annual Feedin Profit {round(ev_load_profile["Weekly feedin Tariff [Euros]"].sum(),2)} Euros')
+#print(f'Annual Draw Cost {round(ev_load_profile["Weekly draw Tariff [Euros]"].sum(),2)} Euros')

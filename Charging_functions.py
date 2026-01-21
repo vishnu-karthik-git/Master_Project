@@ -5,6 +5,7 @@ import numpy as np
 # EV parameters
 EV_battery = 58  # kWh
 max_SOC = 0.95  # SOC percentage
+Grid_max = 11 #kW
 
 np.random.seed(42)   # set the seed
 
@@ -64,9 +65,26 @@ def charge_ev_grid(current_SOC):
 
 def get_load_profile_for_grid_charging(Energy_to_charge: float, start_date: str) -> pd.DataFrame:
     df = pd.DataFrame()
-    time_for_charging = Energy_to_charge / (11 * 0.985)  # hours
+    time_for_charging = Energy_to_charge / (Grid_max * 0.985)  # hours
     end_date = pd.to_datetime(start_date) + pd.Timedelta(hours=time_for_charging)
     df['Timestamp'] = pd.date_range(start=start_date, end=end_date, freq='min')[:-1]
-    df['Grid_Charging_Load_kW'] = 11  # kW
+    df['Grid_Charging_Load_kW'] = Grid_max  # kW
+
+    return df
+
+def get_load_profile_for_grid_solar_charging(Energy_to_charge: float, df: pd.DataFrame, loc: int) -> pd.DataFrame:
+    df_sun = df.iloc[loc:]
+    df = df.set_index('Timestamp')
+    start_date = df_sun[df_sun['total'] < 0].iloc[0]['Timestamp']
+    start_date = start_date + pd.Timedelta(hours=1)
+    # df_charge = df.iloc[first_pv_idx:]
+    df['Grid_Charging_Load_kW'] = 11 - abs(df['total'])
+    time_for_charging = Energy_to_charge / (Grid_max * 0.985)  # hours
+    td = pd.Timedelta(hours=time_for_charging)
+    rounded_td = td.round('1min')
+    #end_date = pd.Timestamp(pd.to_datetime(start_date) + pd.Timedelta(hours=time_for_charging)).round
+    end_date = pd.to_datetime(start_date) + rounded_td
+    df = df.loc[start_date:end_date]
+    df = df.reset_index()
 
     return df

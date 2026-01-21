@@ -33,3 +33,50 @@ def get_emission_for_the_period(df: pd.DataFrame):
         time += np.timedelta64(1, 'h')
 
     return emissions_in_kg_per_kWh
+
+def calculate_emission_with_partial_hour(df: pd.DataFrame, start_time):
+    """
+    Calculate emissions handling partial hours.
+    If charging starts at 8:50, calculate energy from 8:50-9:00 
+    and multiply by emissions of hour 8:00
+    """
+    global emission_profile
+    df = df.copy()
+    df = df.set_index('Timestamp')
+    
+    emissions_total = 0
+    current_time = start_time
+    end_time = df.index[-1]
+    
+    while current_time < end_time:
+        # Calculate the hour boundary
+        hour_start = current_time.floor('h')  # Start of current hour (e.g., 8:00)
+        hour_end = hour_start + pd.Timedelta(hours=1)  # End of current hour (e.g., 9:00)
+        
+        # Determine the actual period to calculate (might be partial)
+        period_start = current_time
+        period_end = min(hour_end, end_time)
+        
+        # Calculate minutes in this period
+        duration_minutes = (period_end - period_start).total_seconds() / 60
+        
+        # Get energy consumed in this period
+        period_data = df.loc[period_start:period_end]
+        if 'Grid_Charging_Load_kW' in period_data.columns:
+            energy_consumed = period_data['Grid_Charging_Load_kW'].sum() / 60  # Convert to kWh
+        else:
+            energy_consumed = period_data[period_data['total'] > 0]['total'].sum() / 60
+        
+        # Get emission factor for the HOUR (use hour_start time for lookup)
+        emission_df = emission_profile.loc[hour_start]
+        emission_rate = emission_df['Carbon intensity g/kWh (direct)']
+        
+        # Calculate emission for this period
+        emission = (emission_rate * energy_consumed) / 1000  # Convert g to kg
+        emissions_total += emission
+        
+        # Move to next hour
+        current_time = hour_end
+    
+    return emissions_total
+
